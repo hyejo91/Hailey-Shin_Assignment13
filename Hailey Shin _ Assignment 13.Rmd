@@ -1,0 +1,145 @@
+---
+title: "Hailey Shin _ Revised Learning Group Project H"
+output: html_notebook
+---
+
+```{r, include = FALSE}
+library(tidyverse)
+library(MBESS)
+library(powerAnalysis)
+options(scipen = 10)
+```
+
+### Introduction
+
+**Research Question**  
+*Is there any difference among socio-economic status groups in their overall grades?*   
+
+In order to address the research question above, a composite variable of read, write, math, science, social study was created by finding the row means of the five test scores.
+Then respondent profile of socio-economic status and descriptive statistic of overall grade were examined.
+
+#### Data Set Up 
+Set the data. 
+```{r, include = FALSE}
+hsb2 <- read_csv("hsb2.csv")
+hsb2$female <- factor(hsb2$female, levels = c(0:1), 
+                      labels = c("Male", "Female"))
+hsb2$race <- factor(hsb2$race, levels = c(1:4), 
+                    labels = c("Hispanic","Asian","African-Amer","White"))
+hsb2$ses <- factor(hsb2$ses, levels = c(1:3), 
+                   labels = c("Low", "Middle", "High"),
+                   ordered =  TRUE)
+hsb2$schtyp <- factor(hsb2$schtyp, levels = c(1:2), 
+                      labels = c("Public", "Private"))
+hsb2$prog <- factor(hsb2$prog, levels = c(1:3), 
+                    labels = c("General", "Academic","Vocational"))
+HSB2 <- hsb2
+```
+
+#### Descriptive Statistics and Grarphical Representation of Descritive Statistics
+```{r}
+HSB2 %>%
+  count(ses)
+HSB2 %>%
+  ggplot(aes(x = ses)) +
+  geom_bar(width = 0.5, fill = c("pink", "green", "blue")) + 
+  theme_minimal() +
+  labs(title = "Socio-Economic Status")
+```
+
+Create *Overall Grade* Variable.
+```{r}
+
+HSB2<- HSB2 %>%
+  rowwise() %>%
+  mutate(Overall.Grade = mean(read:socst, na.rm = TRUE))
+```
+
+```{r}
+HSB2 %>%
+  ggplot(aes(Overall.Grade, fill = ses)) +
+  geom_histogram(binwidth = 1.5) + 
+  theme_minimal() + 
+  scale_fill_brewer(palette = 1) +
+  labs(title = "Overall Grades")
+```
+
+#### Analysis of Variance (ANOVA)
+
+```{r, echo = FALSE}
+HSB2 %>%
+  ggplot(aes(x = ses, y = Overall.Grade, color = ses)) + 
+  geom_boxplot() +
+  scale_colour_manual(values = c("pink", "green", "blue")) + 
+  theme_minimal() + 
+  labs(title = "Overall grade by socio-economic status")
+```
+
+```{r}
+(ANOVA <- anova(aov(HSB2$Overall.Grade ~ HSB2$ses)))
+Eta.Square <- ANOVA$`Sum Sq`[1] / sum(ANOVA$`Sum Sq`[1], ANOVA$`Sum Sq`[2])
+(Cohen.F <- ES.anova.oneway(sst = sum(ANOVA$`Sum Sq`[1], ANOVA$`Sum Sq`[2]),
+                           ssb = ANOVA$`Sum Sq`[1]))
+```
+
+The *eta square* is *`r Eta.Square`*.  
+The *Cohen's F* is *`r Cohen.F$f`*.  
+And the *p-value* is *`r ANOVA[[5]][1]`*.  
+
+#### Conclusion
+The effect size for one-way ANOVA (i.e., Cohen's F) is greater than medium effect size (see the above note about effect size), indicating that the effect is stable.  
+Furthermore, the p-value from ANOVA results is also less than alpha level of .05, indicating consistency with the effect size.  
+Therefore, the results are stable enough to make a statement that *There is difference among socio-economic status groups in their overall grades*.
+
+
+#### Appendix
+##### Post-hoc Analysis
+As the results showed that there is difference among socio-economic status groups in their overall grades, post-hoc analysis was conducted to see which groups are different.
+```{r}
+SES.Means <- tapply(HSB2$Overall.Grade, HSB2$ses, mean)
+Groups <- summary(HSB2$ses)
+
+(CI.Low.Med <- ci.c(means = SES.Means,
+                   s.anova = sqrt(ANOVA$`Mean Sq`[2]),
+                   c.weights = c(1, -1, 0), 
+                   n = Groups, 
+                   N = sum(Groups), 
+                   conf.level = .95))
+(CI.Low.High <- ci.c(means = SES.Means,
+                    s.anova = sqrt(ANOVA$`Mean Sq`[2]),
+                    c.weights = c(1, 0, -1), 
+                    n = Groups, 
+                    N = sum(Groups), 
+                    conf.level = .95))
+(CI.Med.High <- ci.c(means = SES.Means,
+                    s.anova = sqrt(ANOVA$`Mean Sq`[2]),
+                    c.weights = c(0, 1, -1), 
+                    n = Groups, 
+                    N = sum(Groups), 
+                    conf.level = .95))
+
+
+```
+
+Here is another way to do post-hoc analysis using pmap function.
+
+```{r}
+
+Means <- list(tapply(HSB2$Overall.Grade, HSB2$ses, mean))
+Weights <- list("Low - Med" = c(1, -1, 0),
+                "Low - High" = c(1, 0, -1),
+                "Med - High" = c(0, 1, -1))
+
+Confidence.Interval <- pmap(list(Means, Weights, Groups), 
+                            ci.c, 
+                            s.anova = sqrt(ANOVA$`Mean Sq`[2]),
+                            N = sum(Groups), 
+                            conf.level =.95)
+names(Confidence.Interval) <- names(Weights)
+Confidence.Interval
+```
+
+Based on the discussion in class, the difference between Low and Med socio-economic status groups is not stable enough to make an inference because the width of the confidence interval is pretty wide even though it does not include zero within the interval.
+
+
+
